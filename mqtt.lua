@@ -8,14 +8,14 @@ mqtt_config.keepalive = 120
 
 topicStateSub = string.format("Esp8266_%X/state", prefix)
 topicColorSub = string.format("Esp8266_%X/color", prefix)
-topicBrightnessSub = string.format("Esp8266_%X/brighntess", prefix)
+topicBrightnessSub = string.format("Esp8266_%X/brightness", prefix)
 topicModeSub = string.format("Esp8266_%X/mode", prefix)
 
 topicKeepalive = string.format("Esp8266_%X/keepalive", prefix)
 
 topicStateStatus = string.format("Esp8266_%X/state/status", prefix)
 topicColorStatus = string.format("Esp8266_%X/color/status", prefix)
-topicBrightnessStatus = string.format("Esp8266_%X/brighntess/status", prefix)
+topicBrightnessStatus = string.format("Esp8266_%X/brightness/status", prefix)
 topicModeStatus = string.format("Esp8266_%X/mode/status", prefix)
 
 mqtt_client = mqtt.Client(mqtt_config.client_id, mqtt_config.keepalive, mqtt_config.login, mqtt_config.password)

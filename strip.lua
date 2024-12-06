@@ -71,11 +71,9 @@ do
         file.write(sjson.encode(led_values))
         file.close()     
     end
-    led_values.val = 0
-
-    aspiring_values = copy(led_values)
+    
     saved_values = copy(led_values)
-    saved_values.val = 255
+    led_values.val = 0
 
     if file.exists("eus_params.lua") then buffer_init() end
 end
@@ -89,64 +87,68 @@ gradient_tmr:register(25, tmr.ALARM_SEMI, function(t)
 end)
 --==========================================================================================
 function change_brightness(value) 
-    if value ~= nil then aspiring_values.val = value end
-    print("The brightness is changing " .. "Led: " .. led_values.val .. " Asp: " .. aspiring_values.val)
+    print("The brightness is changing " .. "Led: " .. led_values.val .. " Asp: " .. value)
+
+    local val_temp = led_values.val
+    led_values.val = value
+
     tmr.create():alarm(1, tmr.ALARM_SEMI, function(t)
-        if led_values.val ~= aspiring_values.val then
-            if led_values.val > aspiring_values.val then led_values.val = led_values.val - 1
-            elseif led_values.val < aspiring_values.val then led_values.val = led_values.val + 1 
+        if led_values.val ~= val_temp then
+
+            if val_temp > led_values.val then 
+                val_temp = val_temp - 1
+            elseif val_temp < led_values.val then 
+                val_temp = val_temp + 1
             end
-            buffer:fill(color_utils.hsv2grb(led_values.hue, led_values.sat, led_values.val))
+
+            buffer:fill(color_utils.hsv2grb(led_values.hue, led_values.sat, val_temp))
             ws2812.write(buffer)
             t:start()
             return        
+        else
+            buffer:fill(color_utils.hsv2grb(led_values.hue, led_values.sat, val_temp))
+            ws2812.write(buffer)
+        end
+    end)
+end
+--==========================================================================================
+function change_color(green, red, blue) 
+    print("The color changes " .. led_values.val)
+
+    local green_temp, red_temp, blue_temp = color_utils.hsv2grb(led_values.hue, led_values.sat, led_values.val)
+
+    tmr.create():alarm(5, tmr.ALARM_SEMI, function(t)
+        if green_temp ~= green or red_temp ~= red or blue_temp ~= blue then
+
+            if green_temp > green then green_temp = green_temp - 1  elseif green_temp < green then green_temp = green_temp + 1 end
+            if red_temp > red then red_temp = red_temp - 1  elseif red_temp < red then red_temp = red_temp + 1 end
+            if blue_temp > blue then blue_temp = blue_temp - 1  elseif blue_temp < blue then blue_temp = blue_temp + 1 end
+
+            buffer:fill(green_temp, red_temp, blue_temp)
+            ws2812.write(buffer)
+
+            t:start()
+            return
         end
     end)
 end
 --==========================================================================================
 function change_state(state)
-    led_state = state
-    if state == '0' then
-        saved_values = copy(aspiring_values)
-        aspiring_values.val = 0
+    if state == '0' and led_state == '1' then
+        saved_values.val = led_values.val
+        change_brightness(0)
         if led_values.mode == "gradient" then gradient_tmr:stop() end
-    elseif state == '1' then
-        aspiring_values = copy(saved_values)
+    elseif state == '1' and led_state == '0' then
+        change_brightness(saved_values.val)
         if led_values.mode == "gradient" then gradient_tmr:start() end
     end
-
-    change_brightness(nil)
-end
---==========================================================================================
-function change_color(green, red, blue) 
-    print("The color changes")
-    if led_state == '1' then
-        local led_green, led_red, led_blue = color_utils.hsv2grb(led_values.hue, led_values.sat, led_values.val)
-        led_values.hue, led_values.sat, led_values.val = color_utils.grb2hsv(green, red, blue)
-        aspiring_values.hue, aspiring_values.sat, aspiring_values.val = color_utils.grb2hsv(green, red, blue)
-        tmr.create():alarm(5, tmr.ALARM_SEMI, function(t)
-            if led_green ~= green or led_red ~= red or led_blue ~= blue then
-
-                if led_green > green then led_green = led_green - 1  elseif led_green < green then led_green = led_green + 1 end
-                if led_red > red then led_red = led_red - 1  elseif led_red < red then led_red = led_red + 1 end
-                if led_blue > blue then led_blue = led_blue - 1  elseif led_blue < blue then led_blue = led_blue + 1 end
-
-                buffer:fill(led_green, led_red, led_blue)
-                ws2812.write(buffer)
-                t:start()
-                return
-            end
-        end)
-    elseif led_state == '0' then
-        led_values.hue, led_values.sat, val = color_utils.grb2hsv(green, red, blue)
-    end
-    save_color(led_values.hue, led_values.sat)
 end
 --==========================================================================================
 function new_message(client, topic, data)
 
     if topic == topicStateSub then
         change_state(data)
+        led_state = data
         mqtt_client:publish(topicStateStatus, data, 0, 0, function(client) end)
     end
 
@@ -160,13 +162,10 @@ function new_message(client, topic, data)
     end
 
     if topic == topicBrightnessSub then
-        if led_state == '1' then 
-            change_brightness(math.floor(tonumber((255 / 100) * data)))
-        elseif led_state == '0' then
-            saved_values.val = math.floor(tonumber((255 / 100) * data))
-        end
+        local value = math.floor(tonumber((255 / 100) * data))
+        if led_state == '1' then change_brightness(value) elseif led_state == '0' then saved_values.val = value end
         mqtt_client:publish(topicBrightnessStatus, data, 0, 0, function(client) end) 
-        save_brightness(math.floor(tonumber((255 / 100) * data)))
+        save_brightness(value)
     end
 
     if topic == topicModeSub then
