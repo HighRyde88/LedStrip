@@ -4,9 +4,10 @@ wifi_config.save = true
 wifi_config.ssid = ""
 wifi_config.pwd = ""
 
-prefix = 1407717
+hostname = 0
 
 ws2812.init(ws2812.MODE_SINGLE)
+rainbow_buffer = ws2812.newBuffer(360, 3)
 
 local wifi_old_status = wifi.STA_IDLE
 local wifi_status = wifi.STA_IDLE
@@ -37,7 +38,14 @@ function wifi_check()
         end
 
         if wifi_status == wifi.STA_GOTIP then
-            print(string.format("Successfully connected: ip %s, netmask %s, gateway %s",  wifi.sta.getip()))  
+            print(string.format("Successfully connected: ip %s, netmask %s, gateway %s",  wifi.sta.getip()))
+            local p = dofile("eus_params.lua")
+            hostname = p.host_name
+            if (wifi.sta.sethostname(hostname) == true) then
+                print("Hostname was successfully changed: " .. hostname)
+            else
+                print("Hostname was not changed")
+            end
             dofile("strip.lua")
             dofile("mqtt.lua")  
         end
@@ -45,17 +53,19 @@ function wifi_check()
 end
 
 function delayed_start(config)
-    ws2812.write(ws2812.newBuffer(10, 3))
 
-    print(string.format("Starting the LED controller: " .. string.format("ESP%X", prefix)))
+    if file.exists("eus_params.lua") == true then local p = dofile("eus_params.lua") hostname = p.host_name else hostname = string.format("ESP%X", node.chipid()) end
 
-    --or gpio.read(3) == gpio.LOW
+    print(string.format("Starting the LED controller: " .. hostname))
 
-    if file.exists("eus_params.lua") == false then
-        print(string.format("An access point has been created for connection: " .. string.format("ESP%X", prefix)))
+    if file.exists("eus_params.lua") == false or gpio.read(3) == gpio.LOW then
+        print(string.format("An access point has been created for connection: " .. hostname))
+
+        local ssid, password, bssid_set, bssid=wifi.sta.getconfig()
+        if ssid ~= "" then wifi.sta.clearconfig() end
 
         enduser_setup.manual(false)
-        enduser_setup.start(string.format("ESP%X", prefix), function() 
+        enduser_setup.start(hostname, function() 
             local p = dofile("eus_params.lua")
             wifi_config.ssid = p.wifi_ssid
             wifi_config.pwd = p.wifi_password
@@ -71,6 +81,7 @@ end
 
 do
     gpio.mode(3, gpio.INPUT)
+    ws2812.write(rainbow_buffer)
     tmr.create():alarm(1000, tmr.ALARM_SINGLE, function() delayed_start(wifi_config) end)
 end
 
