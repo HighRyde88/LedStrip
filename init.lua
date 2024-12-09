@@ -4,7 +4,7 @@ wifi_config.save = true
 wifi_config.ssid = ""
 wifi_config.pwd = ""
 
-hostname = 0
+local hostname = 0
 
 ws2812.init(ws2812.MODE_SINGLE)
 rainbow_buffer = ws2812.newBuffer(360, 3)
@@ -46,19 +46,20 @@ function wifi_check()
             else
                 print("Hostname was not changed")
             end
-            dofile("strip.lua")
-            dofile("mqtt.lua")  
+
+            mqtt_client:connect(mqtt_config.host, mqtt_config.port, false)
         end
     end
 end
 
 function delayed_start(config)
-
     if file.exists("eus_params.lua") == true then local p = dofile("eus_params.lua") hostname = p.host_name else hostname = string.format("ESP%X", node.chipid()) end
 
     print(string.format("Starting the LED controller: " .. hostname))
 
-    if file.exists("eus_params.lua") == false or gpio.read(3) == gpio.LOW then
+    --or gpio.read(3) == gpio.LOW
+
+    if file.exists("eus_params.lua") == false then
         print(string.format("An access point has been created for connection: " .. hostname))
 
         local ssid, password, bssid_set, bssid=wifi.sta.getconfig()
@@ -73,7 +74,10 @@ function delayed_start(config)
             node.restart()
         end)
     else
+        dofile("strip.lua")
+        dofile("mqtt.lua")
         tmr.create():alarm(500, tmr.ALARM_AUTO, function() wifi_check() end)
+        wifi.setmode(wifi.STATION)
         wifi.sta.connect()
     end
 
@@ -82,7 +86,7 @@ end
 do
     gpio.mode(3, gpio.INPUT)
     ws2812.write(rainbow_buffer)
-    tmr.create():alarm(1000, tmr.ALARM_SINGLE, function() delayed_start(wifi_config) end)
+    tmr.create():alarm(1500, tmr.ALARM_SINGLE, function() delayed_start(wifi_config) end)
 end
 
 

@@ -1,48 +1,15 @@
-local led_state = '0'
+local led_state = '1'
 local led_num = 0
-local led_values = {}
-led_values.hue = 0
-led_values.sat = 255
-led_values.val = 0
+led_values = {}
+led_values.hue = 73
+led_values.sat = 245
+led_values.val = 255
 led_values.mode = "static"
-led_values.brg = 0
 
 local buffer_state = false
 local gradient_tmr = tmr.create()
 local strip_tmr = tmr.create()
---==========================================================================================
-local temp = nil
-function save_brightness(br, br_prc)
-    if file.open("strip_values.txt", "r") then 
-        temp = sjson.decode(file.read())
-        file.close()
-    end 
 
-    temp.val = br
-    temp.brg = br_prc
-
-    if file.open("strip_values.txt", "w+") then 
-        file.write(sjson.encode(temp))
-        file.close()
-    end 
-    temp = nil
-end
-
-function save_color(hue, sat)
-    if file.open("strip_values.txt", "r") then 
-        temp = sjson.decode(file.read())
-        file.close()
-    end 
-
-    temp.hue = hue
-    temp.sat = sat
-
-    if file.open("strip_values.txt", "w+") then 
-        file.write(sjson.encode(temp))
-        file.close()
-    end 
-    temp = nil
-end
 --==========================================================================================
 function copy(src)
     local t2 = {}
@@ -56,34 +23,21 @@ function buffer_init()
     if buffer_state == false then 
         local p = dofile("eus_params.lua")
         buffer = ws2812.newBuffer(tonumber(p.leds_num), 3)
-    
-        buffer:fill(0,0,0)
-        ws2812.write(buffer)
 
         print("Led buffer init: " .. p.leds_num .. " leds")
 
         buffer_state = true
         led_num = tonumber(p.leds_num)
+        strip_tmr:start()
     end
 end
 --==========================================================================================
-do
-    if file.open("strip_values.txt", "r") then
-        led_values = sjson.decode(file.read())
-        file.close() 
-    else
-        file.open("strip_values.txt", "w") 
-        file.write(sjson.encode(led_values))
-        file.close()     
-    end
-    
+do   
     saved_values = copy(led_values)
-    led_values.val = 0
-
+    
     for i = 1, 360 do
         rainbow_buffer:set(i, color_utils.hsv2grb(i - 1, 255, 255))
     end
-
 
     if file.exists("eus_params.lua") then buffer_init() end
 end
@@ -113,7 +67,6 @@ strip_tmr:register(1, tmr.ALARM_AUTO, function(t)
 
     end
 end)
-strip_tmr:start()
 
 gradient_tmr:register(25, tmr.ALARM_SEMI, function(t)
     led_values.hue = led_values.hue + 1
@@ -121,13 +74,12 @@ gradient_tmr:register(25, tmr.ALARM_SEMI, function(t)
     t:start()
 end)
 --==========================================================================================
-function change_brightness(value, value_prc) 
+function change_brightness(value) 
     local temp_val = 0
     if value == nil then 
         saved_values.val = led_values.val
     else
         temp_val = value
-        if value_prc ~= nil then save_brightness(value, value_prc) end
     end
     tmr.create():alarm(1, tmr.ALARM_SEMI, function(t)
         if led_values.val ~= temp_val then
@@ -145,18 +97,16 @@ end
 --==========================================================================================
 function change_state(state)
     if state == '0' and led_state == '1' then
-        change_brightness(nil, nil)
+        change_brightness(nil)
         if led_values.mode == "gradient" then gradient_tmr:stop() end
     elseif state == '1' and led_state == '0' then
-        change_brightness(saved_values.val, nil)
+        change_brightness(saved_values.val)
         if led_values.mode == "gradient" then gradient_tmr:start() end
     end
 end
 --==========================================================================================
 function change_color(green, red, blue) 
    local green_temp, red_temp, blue_temp = color_utils.hsv2grb(led_values.hue, led_values.sat, 255)
-
-   save_color(led_values.hue, led_values.sat)
 
     tmr.create():alarm(1, tmr.ALARM_SEMI, function(t)
         if green_temp ~= green or red_temp ~= red or blue_temp ~= blue then
@@ -182,12 +132,11 @@ function new_message(client, topic, data)
     end
 
     if topic == topicBrightnessSub then
-        local br_value = tonumber((255 / 100) * data)
+        local br_value = math.floor(tonumber((255 / 100) * data))
         if led_state == '1' then 
-            change_brightness(br_value, data)
+            change_brightness(br_value)
         else 
             saved_values.val = br_value 
-            save_brightness(br_value, data)
         end
         mqtt_client:publish(topicBrightnessStatus, data, 0, 0, function(client) end) 
     end
@@ -204,7 +153,6 @@ function new_message(client, topic, data)
             change_color(g, r, b) 
         else 
             led_values.hue, led_values.sat, val = color_utils.grb2hsv(g, r, b)
-            save_color(led_values.hue, led_values.sat) 
         end
 
         mqtt_client:publish(topicColorStatus, data, 0, 0, function(client) end) 
@@ -233,7 +181,6 @@ function set_static()
     strip_tmr:start()
     led_values.mode = "static"
     local g, r, b = color_utils.hsv2grb(led_values.hue, led_values.sat, 255)
-    save_color(led_values.hue, led_values.sat)
     mqtt_client:publish(topicColorStatus, string.format("#%02x%02x%02x", r, g, b), 0, 0, function(client) end)
     mqtt_client:publish(topicModeStatus, "static", 0, 0, function(client) end)
 end
